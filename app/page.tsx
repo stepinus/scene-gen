@@ -1,103 +1,428 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Progress } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
+import { Upload, Download, Play, X, ImageIcon, Sparkles } from 'lucide-react'
+import SettingsDialog from '@/components/SettingsDialog'
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [textPrompt, setTextPrompt] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [progressStage, setProgressStage] = useState<string>('')
+  const [resultImage, setResultImage] = useState<string | null>(null)
+  const [resultVideo, setResultVideo] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [settings, setSettings] = useState<{serverUrl: string, comfyPipeline: string} | null>(null)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Загружаем настройки при монтировании
+  useEffect(() => {
+    const loadSettings = () => {
+      try {
+        const savedSettings = localStorage.getItem('ai-video-settings')
+        if (savedSettings) {
+          setSettings(JSON.parse(savedSettings))
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки настроек:', error)
+      }
+    }
+
+    loadSettings()
+
+    // Слушаем событие обновления настроек
+    const handleSettingsUpdate = (event: CustomEvent) => {
+      setSettings(event.detail)
+    }
+
+    window.addEventListener('settings-saved', handleSettingsUpdate as EventListener)
+    
+    return () => {
+      window.removeEventListener('settings-saved', handleSettingsUpdate as EventListener)
+    }
+  }, [])
+
+  const handleImageSelect = (file: File) => {
+    if (file && file.type.startsWith('image/')) {
+      setSelectedImage(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handleImageSelect(file)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) {
+      handleImageSelect(file)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+  }
+
+  const handleSubmit = async () => {
+    if (!selectedImage || !textPrompt.trim()) {
+      alert('Пожалуйста, загрузите изображение и введите текст')
+      return
+    }
+
+    setIsLoading(true)
+    setProgress(0)
+    setProgressStage('Инициализация...')
+    setResultImage(null)
+    setResultVideo(null)
+
+    // Реалистичная симуляция прогресса для генерации видео
+    const updateProgress = (stage: string, progressValue: number) => {
+      setProgressStage(stage)
+      setProgress(progressValue)
+    }
+
+    // Начальная стадия
+    updateProgress('Подготовка запроса...', 5)
+
+    try {
+      const formData = new FormData()
+      formData.append('image', selectedImage)
+      formData.append('text', textPrompt)
+      
+      // Добавляем настройки ComfyUI если они есть
+      if (settings?.serverUrl && settings?.comfyPipeline) {
+        formData.append('serverUrl', settings.serverUrl)
+        formData.append('comfyPipeline', settings.comfyPipeline)
+        updateProgress('Отправка запроса в ComfyUI...', 10)
+      } else {
+        updateProgress('Использование демонстрационного режима...', 10)
+      }
+
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (response.ok) {
+        updateProgress('Обработка ответа...', 95)
+        const data = await response.json()
+        
+        setResultImage(data.image)
+        setResultVideo(data.video)
+        updateProgress('Готово!', 100)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Ошибка API')
+      }
+    } catch (error) {
+      console.error('Ошибка:', error)
+      alert(`Произошла ошибка при обработке запроса: ${error}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleReset = () => {
+    setSelectedImage(null)
+    setImagePreview(null)
+    setTextPrompt('')
+    setResultImage(null)
+    setResultVideo(null)
+    setProgress(0)
+    setProgressStage('')
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const removeImage = () => {
+    setSelectedImage(null)
+    setImagePreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  return (
+    <main className="container mx-auto px-4 py-8 max-w-7xl">
+      {/* Заголовок */}
+      <div className="text-center mb-10">
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <Sparkles className="w-8 h-8 text-primary" />
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
+            AI Генератор Видео
+          </h1>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          Превратите ваши изображения в потрясающие AI видео с помощью текстового описания сцены
+        </p>
+      </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+          {/* Левая колонка - Ввод */}
+          <div className="space-y-6">
+          {/* Загрузка изображения */}
+          <Card className="overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                Загрузка изображения
+                {selectedImage && <Badge variant="secondary">Загружено</Badge>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              {!imagePreview ? (
+                <div
+                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer ${
+                    isDragOver 
+                      ? 'border-primary bg-primary/5' 
+                      : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-primary/5'
+                  }`}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImageIcon className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-medium mb-2">
+                    {isDragOver ? 'Отпустите файл здесь' : 'Перетащите изображение или нажмите для выбора'}
+                  </h3>
+                  <p className="text-muted-foreground">
+                    Поддерживаются форматы: JPG, PNG, GIF
+                  </p>
+                  <Input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                  />
+                </div>
+              ) : (
+                <div className="relative">
+                  <img
+                    src={imagePreview}
+                    alt="Предпросмотр"
+                    className="w-full h-64 object-cover rounded-lg border shadow-sm"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="absolute top-2 right-2"
+                    onClick={removeImage}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                  <div className="mt-3 p-2 bg-muted rounded text-sm">
+                    <strong>Файл:</strong> {selectedImage?.name}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Описание сцены */}
+          <Card>
+            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950">
+              <CardTitle>Описание сцены</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-3">
+                <Label htmlFor="text-prompt" className="text-base">
+                  Опишите, где должен находиться объект с изображения
+                </Label>
+                <Textarea
+                  id="text-prompt"
+                  placeholder="Например: на тропическом острове на пляже с белым песком и пальмами, волны плещутся на берегу, закат в небе..."
+                  value={textPrompt}
+                  onChange={(e) => setTextPrompt(e.target.value)}
+                  className="min-h-[120px] text-base"
+                />
+                <div className="text-sm text-muted-foreground">
+                  <strong>Совет:</strong> Чем детальнее описание, тем лучше результат
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Кнопки управления */}
+          <div className="flex gap-3">
+            <Button 
+              onClick={handleSubmit}
+              disabled={isLoading || !selectedImage || !textPrompt.trim()}
+              className="flex-1 h-12 text-base"
+              size="lg"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                  Генерируем...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Создать видео
+                </>
+              )}
+            </Button>
+            <Button variant="outline" onClick={handleReset} size="lg" className="h-12">
+              Сбросить
+            </Button>
+          </div>
+
+          {/* Прогресс */}
+          {isLoading && (
+            <Card className="border-primary/20">
+              <CardContent className="pt-6">
+                              <div className="space-y-3">
+                <div className="flex justify-between text-sm font-medium">
+                  <span>{progressStage}</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
+                <Progress value={progress} className="h-2" />
+                <div className="text-sm text-muted-foreground text-center">
+                  {settings?.serverUrl ? 
+                    'Генерация видео из вашего изображения через ComfyUI может занять несколько минут...' :
+                    'Пожалуйста, подождите. Это может занять несколько минут...'
+                  }
+                </div>
+              </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Правая колонка - Результаты */}
+        <div className="space-y-6">
+          {(resultImage || resultVideo || isLoading) && (
+            <>
+              {/* Результат - Изображение */}
+              <Card className="overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+                  <CardTitle className="flex items-center gap-2">
+                    <Download className="w-5 h-5" />
+                    Исходное изображение
+                    {resultImage && <Badge variant="secondary">Загружено</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {resultImage ? (
+                    <div className="space-y-4">
+                      <img
+                        src={resultImage}
+                        alt="Загруженное изображение"
+                        className="w-full h-64 object-cover rounded-lg border shadow-sm"
+                      />
+                                            <Button variant="outline" className="w-full">
+                        <Download className="w-4 h-4 mr-2" />
+                        Скачать исходное изображение
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/50">
+                      <div className="text-center">
+                        {isLoading ? (
+                          <>
+                            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-2" />
+                            <p className="text-muted-foreground">Изображение загружается...</p>
+                          </>
+                        ) : (
+                                                      <p className="text-muted-foreground">Загруженное изображение появится здесь</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Результат - Видео */}
+              <Card className="overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-950">
+                  <CardTitle className="flex items-center gap-2">
+                    <Play className="w-5 h-5" />
+                    Результат - Видео
+                    {resultVideo && <Badge variant="secondary">Готово</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {resultVideo ? (
+                    <div className="space-y-4">
+                      <video
+                        src={resultVideo}
+                        controls
+                        className="w-full h-64 rounded-lg border shadow-sm"
+                      />
+                      <Button variant="outline" className="w-full">
+                        <Download className="w-4 h-4 mr-2" />
+                        Скачать видео
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/50">
+                      <div className="text-center">
+                        {isLoading ? (
+                          <>
+                            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-2" />
+                            <p className="text-muted-foreground">Видео генерируется...</p>
+                          </>
+                        ) : (
+                          <p className="text-muted-foreground">Видео появится здесь</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Стартовое состояние */}
+          {!resultImage && !resultVideo && !isLoading && (
+            <Card className="border-dashed">
+              <CardContent className="pt-6">
+                <div className="text-center py-16">
+                  <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-primary/10 to-blue-500/10 rounded-full flex items-center justify-center">
+                    <Play className="w-10 h-10 text-primary" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-3">Готово к генерации</h3>
+                  <p className="text-muted-foreground max-w-sm mx-auto">
+                    Загрузите изображение и добавьте описание сцены, чтобы создать потрясающее AI видео
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+        </div>
+      </div>
+
+      {/* Плавающая кнопка настроек */}
+      <SettingsDialog />
+    </main>
+  )
 }
