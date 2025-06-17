@@ -67,6 +67,7 @@ async function pollForResult(
         await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_MS));
         continue;
       }
+      console.log(JSON.stringify(historyData[prompt_id], null, 2));
 
       // Ищем результат в зависимости от режима
       const result = findResultInHistory(historyData[prompt_id], mode);
