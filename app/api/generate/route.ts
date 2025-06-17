@@ -204,7 +204,9 @@ export async function POST(request: NextRequest) {
     const videoGenerateResponse = await fetch(`${serverUrl}/prompt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: videoWorkflow }),
+      body: JSON.stringify({ prompt: videoWorkflow, "extra_data": {
+        "api_key_comfy_org": "comfyui-b12f29edf1d68bed86e7c1087421bd06feda39499e147e31314f59099a4c06d6",
+    }, }),
     });
 
     if (!videoGenerateResponse.ok) {
