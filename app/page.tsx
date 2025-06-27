@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { Suspense, useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,7 +12,12 @@ import { Badge } from '@/components/ui/badge'
 import { Upload, Download, Play, X, ImageIcon, Sparkles } from 'lucide-react'
 import SettingsDialog from '@/components/SettingsDialog'
 
-export default function Home() {
+type Settings = {
+  serverUrl?: string;
+  comfyPipeline?: string;
+};
+
+function HomeComponent() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [textPrompt, setTextPrompt] = useState('')
@@ -22,34 +28,54 @@ export default function Home() {
   const [resultVideo, setResultVideo] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [settings, setSettings] = useState<{serverUrl: string, comfyPipeline: string} | null>(null)
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const searchParams = useSearchParams()
 
-  // Загружаем настройки при монтировании
+  // Загружаем настройки при монтировании и обрабатываем URL параметр
   useEffect(() => {
-    const loadSettings = () => {
+    const serverUrlFromQuery = searchParams.get('url')
+    let newSettings: Settings = {}
+
+    // 1. Пытаемся загрузить настройки из localStorage
+    try {
+      const savedSettingsRaw = localStorage.getItem('ai-video-settings')
+      if (savedSettingsRaw) {
+        newSettings = JSON.parse(savedSettingsRaw)
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки настроек из localStorage:', error)
+      newSettings = {} // Начинаем с чистого листа, если парсинг не удался
+    }
+
+    // 2. Если есть параметр в URL, он переопределяет serverUrl
+    if (serverUrlFromQuery) {
+      console.log(`Найден URL сервера в параметре: ${serverUrlFromQuery}`)
+      newSettings = { ...newSettings, serverUrl: serverUrlFromQuery }
+
+      // 3. Сохраняем обновленные настройки обратно в localStorage
       try {
-        const savedSettings = localStorage.getItem('ai-video-settings')
-        if (savedSettings) {
-          setSettings(JSON.parse(savedSettings))
-        }
+        localStorage.setItem('ai-video-settings', JSON.stringify(newSettings))
+        // Отправляем событие, чтобы другие компоненты были в курсе
+        window.dispatchEvent(new CustomEvent('settings-saved', { detail: newSettings }))
       } catch (error) {
-        console.error('Ошибка загрузки настроек:', error)
+        console.error('Ошибка сохранения настроек в localStorage:', error)
       }
     }
 
-    loadSettings()
+    // 4. Обновляем состояние компонента
+    setSettings(newSettings)
 
-    // Слушаем событие обновления настроек
+    // 5. Слушаем событие обновления настроек из других компонентов
     const handleSettingsUpdate = (event: CustomEvent) => {
       setSettings(event.detail)
     }
 
     window.addEventListener('settings-saved', handleSettingsUpdate as EventListener)
-    
+
     return () => {
       window.removeEventListener('settings-saved', handleSettingsUpdate as EventListener)
     }
-  }, [])
+  }, [searchParams])
 
   const handleImageSelect = (file: File) => {
     if (file && file.type.startsWith('image/')) {
@@ -159,6 +185,25 @@ export default function Home() {
       fileInputRef.current.value = ''
     }
   }
+
+  const handleDownload = (url: string | null) => {
+    if (!url) return;
+    // We need to fetch the blob to bypass CORS issues for direct download
+    fetch(url)
+      .then(response => response.blob())
+      .then(blob => {
+        const blobUrl = window.URL.createObjectURL(blob);
+        const filename = url.substring(url.lastIndexOf('/') + 1);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+      })
+      .catch(e => console.error('Could not download the file.', e));
+  };
 
   const removeImage = () => {
     setSelectedImage(null)
@@ -325,9 +370,9 @@ export default function Home() {
               <Card className="overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
                   <CardTitle className="flex items-center gap-2">
-                    <Download className="w-5 h-5" />
-                    Исходное изображение
-                    {resultImage && <Badge variant="secondary">Загружено</Badge>}
+                    <ImageIcon className="w-5 h-5" />
+                    Сгенерированное изображение
+                    {resultImage && <Badge variant="secondary">Готово</Badge>}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
@@ -335,12 +380,12 @@ export default function Home() {
                     <div className="space-y-4">
                       <img
                         src={resultImage}
-                        alt="Загруженное изображение"
+                        alt="Сгенерированное нейросетью изображение"
                         className="w-full h-64 object-cover rounded-lg border shadow-sm"
                       />
-                                            <Button variant="outline" className="w-full">
+                      <Button variant="outline" className="w-full" onClick={() => handleDownload(resultImage)}>
                         <Download className="w-4 h-4 mr-2" />
-                        Скачать исходное изображение
+                        Скачать изображение
                       </Button>
                     </div>
                   ) : (
@@ -377,7 +422,7 @@ export default function Home() {
                         controls
                         className="w-full h-64 rounded-lg border shadow-sm"
                       />
-                      <Button variant="outline" className="w-full">
+                      <Button variant="outline" className="w-full" onClick={() => handleDownload(resultVideo)}>
                         <Download className="w-4 h-4 mr-2" />
                         Скачать видео
                       </Button>
@@ -424,5 +469,13 @@ export default function Home() {
       {/* Плавающая кнопка настроек */}
       <SettingsDialog />
     </main>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div>Загрузка...</div>}>
+      <HomeComponent />
+    </Suspense>
   )
 }
