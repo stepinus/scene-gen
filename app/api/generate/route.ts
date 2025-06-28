@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
 
     // Если указан ComfyUI сервер, отправляем туда запрос
     if (serverUrl) {
+      console.log("Итоговый workflow для отправки на сервер:", JSON.stringify(workflow, null, 2));
       try {
         const comfyResponse = await fetch(`${serverUrl}/prompt`, {
           method: 'POST',
