@@ -63,13 +63,7 @@ export async function POST(request: NextRequest) {
 
         const comfyData = await comfyResponse.json()
 
-        // Здесь мы можем добавить логику ожидания результата от ComfyUI
-        // Для простоты вернем заглушки
-        return NextResponse.json({
-          image: 'https://example.com/generated-image.jpg',
-          video: 'https://example.com/generated-video.mp4',
-          workflowResponse: comfyData
-        })
+        return NextResponse.json({ comfyData })
       } catch (error) {
         console.error('Ошибка ComfyUI:', error)
         return NextResponse.json(
@@ -79,12 +73,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Если ComfyUI сервер не указан, используем демонстрационный режим
-    return NextResponse.json({
-      image: 'https://example.com/demo-image.jpg',
-      video: 'https://example.com/demo-video.mp4',
-      isDemo: true
-    })
+    return NextResponse.json({})
 
   } catch (error) {
     console.error('Ошибка обработки запроса:', error)
