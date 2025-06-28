@@ -257,15 +257,6 @@ const DEFAULT_PIPELINE = `{
       "title": "Preview Any"
     }
   },
-  "295": {
-    "inputs": {
-      "image": "3.jpg"
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "Load Image"
-    }
-  },
   "296": {
     "inputs": {
       "prompt": [
@@ -278,7 +269,7 @@ const DEFAULT_PIPELINE = `{
       "seed": 132083499551220,
       "prompt_upsampling": false,
       "input_image": [
-        "295",
+        "318",
         0
       ]
     },
@@ -420,6 +411,18 @@ const DEFAULT_PIPELINE = `{
     "class_type": "PreviewAny",
     "_meta": {
       "title": "Preview Any"
+    }
+  },
+  "318": {
+    "inputs": {
+      "image": "",
+      "keep_alpha_channel": false,
+      "output_mode": false,
+      "choose image to upload": "image"
+    },
+    "class_type": "LoadImageFromUrl",
+    "_meta": {
+      "title": "Load Image From URL"
     }
   }
 }

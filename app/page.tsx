@@ -18,7 +18,8 @@ type Settings = {
 };
 
 function HomeComponent() {
-  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [textPrompt, setTextPrompt] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -79,7 +80,9 @@ function HomeComponent() {
 
   const handleImageSelect = (file: File) => {
     if (file && file.type.startsWith('image/')) {
-      setSelectedImage(file)
+      setSelectedImageFile(file)
+
+      // Для отображения превью используем FileReader как раньше
       const reader = new FileReader()
       reader.onload = (e) => {
         setImagePreview(e.target?.result as string)
@@ -92,6 +95,34 @@ function HomeComponent() {
     const file = event.target.files?.[0]
     if (file) {
       handleImageSelect(file)
+      uploadImageToServer(file)
+    }
+  }
+
+  const uploadImageToServer = async (file: File) => {
+    setIsLoading(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Ошибка загрузки изображения')
+      }
+
+      const uploadData = await uploadResponse.json()
+      setSelectedImageUrl(uploadData.imageUrl)
+
+    } catch (error) {
+      console.error('Ошибка при загрузке изображения:', error)
+      alert('Ошибка при загрузке изображения')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -101,6 +132,7 @@ function HomeComponent() {
     const file = e.dataTransfer.files[0]
     if (file) {
       handleImageSelect(file)
+      uploadImageToServer(file)
     }
   }
 
@@ -115,7 +147,7 @@ function HomeComponent() {
   }
 
   const handleSubmit = async () => {
-    if (!selectedImage || !textPrompt.trim()) {
+    if (!selectedImageUrl || !textPrompt.trim()) {
       alert('Пожалуйста, загрузите изображение и введите текст')
       return
     }
@@ -126,20 +158,18 @@ function HomeComponent() {
     setResultImage(null)
     setResultVideo(null)
 
-    // Реалистичная симуляция прогресса для генерации видео
     const updateProgress = (stage: string, progressValue: number) => {
       setProgressStage(stage)
       setProgress(progressValue)
     }
 
-    // Начальная стадия
     updateProgress('Подготовка запроса...', 5)
 
     try {
       const formData = new FormData()
-      formData.append('image', selectedImage)
+      formData.append('imageUrl', selectedImageUrl) // Теперь отправляем URL изображения
       formData.append('text', textPrompt)
-      
+
       // Добавляем настройки ComfyUI если они есть
       if (settings?.serverUrl && settings?.comfyPipeline) {
         formData.append('serverUrl', settings.serverUrl)
@@ -157,7 +187,7 @@ function HomeComponent() {
       if (response.ok) {
         updateProgress('Обработка ответа...', 95)
         const data = await response.json()
-        
+
         setResultImage(data.image)
         setResultVideo(data.video)
         updateProgress('Готово!', 100)
@@ -174,7 +204,8 @@ function HomeComponent() {
   }
 
   const handleReset = () => {
-    setSelectedImage(null)
+    setSelectedImageFile(null)
+    setSelectedImageUrl(null)
     setImagePreview(null)
     setTextPrompt('')
     setResultImage(null)
@@ -206,7 +237,8 @@ function HomeComponent() {
   };
 
   const removeImage = () => {
-    setSelectedImage(null)
+    setSelectedImageFile(null)
+    setSelectedImageUrl(null)
     setImagePreview(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -228,24 +260,24 @@ function HomeComponent() {
         </p>
       </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          {/* Левая колонка - Ввод */}
-          <div className="space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        {/* Левая колонка - Ввод */}
+        <div className="space-y-6">
           {/* Загрузка изображения */}
           <Card className="overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
               <CardTitle className="flex items-center gap-2">
                 <Upload className="w-5 h-5" />
                 Загрузка изображения
-                {selectedImage && <Badge variant="secondary">Загружено</Badge>}
+                {selectedImageFile && <Badge variant="secondary">Загружено</Badge>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
               {!imagePreview ? (
                 <div
                   className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer ${
-                    isDragOver 
-                      ? 'border-primary bg-primary/5' 
+                    isDragOver
+                      ? 'border-primary bg-primary/5'
                       : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-primary/5'
                   }`}
                   onDrop={handleDrop}
@@ -284,7 +316,7 @@ function HomeComponent() {
                     <X className="w-4 h-4" />
                   </Button>
                   <div className="mt-3 p-2 bg-muted rounded text-sm">
-                    <strong>Файл:</strong> {selectedImage?.name}
+                    <strong>Файл:</strong> {selectedImageFile?.name}
                   </div>
                 </div>
               )}
@@ -317,9 +349,9 @@ function HomeComponent() {
 
           {/* Кнопки управления */}
           <div className="flex gap-3">
-            <Button 
+            <Button
               onClick={handleSubmit}
-              disabled={isLoading || !selectedImage || !textPrompt.trim()}
+              disabled={isLoading || !selectedImageFile || !textPrompt.trim()}
               className="flex-1 h-12 text-base"
               size="lg"
             >
@@ -344,19 +376,19 @@ function HomeComponent() {
           {isLoading && (
             <Card className="border-primary/20">
               <CardContent className="pt-6">
-                              <div className="space-y-3">
-                <div className="flex justify-between text-sm font-medium">
-                  <span>{progressStage}</span>
-                  <span>{Math.round(progress)}%</span>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm font-medium">
+                    <span>{progressStage}</span>
+                    <span>{Math.round(progress)}%</span>
+                  </div>
+                  <Progress value={progress} className="h-2" />
+                  <div className="text-sm text-muted-foreground text-center">
+                    {settings?.serverUrl ?
+                      'Генерация видео из вашего изображения через ComfyUI может занять несколько минут...' :
+                      'Пожалуйста, подождите. Это может занять несколько минут...'
+                    }
+                  </div>
                 </div>
-                <Progress value={progress} className="h-2" />
-                <div className="text-sm text-muted-foreground text-center">
-                  {settings?.serverUrl ? 
-                    'Генерация видео из вашего изображения через ComfyUI может занять несколько минут...' :
-                    'Пожалуйста, подождите. Это может занять несколько минут...'
-                  }
-                </div>
-              </div>
               </CardContent>
             </Card>
           )}
@@ -397,7 +429,7 @@ function HomeComponent() {
                             <p className="text-muted-foreground">Изображение загружается...</p>
                           </>
                         ) : (
-                                                      <p className="text-muted-foreground">Загруженное изображение появится здесь</p>
+                          <p className="text-muted-foreground">Загруженное изображение появится здесь</p>
                         )}
                       </div>
                     </div>
@@ -462,7 +494,6 @@ function HomeComponent() {
               </CardContent>
             </Card>
           )}
-          
         </div>
       </div>
 
