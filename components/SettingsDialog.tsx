@@ -410,12 +410,12 @@ const DEFAULT_PIPELINE = `{
     },
     "class_type": "PreviewAny",
     "_meta": {
-      "title": "Preview Any"
+      "title": "Preview Any" g
     }
   },
   "318": {
     "inputs": {
-      "image": "",
+      "image": "IMG_PLACEHOLDER",
       "keep_alpha_channel": false,
       "output_mode": false,
       "choose image to upload": "image"

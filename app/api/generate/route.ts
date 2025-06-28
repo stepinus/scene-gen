@@ -3,33 +3,19 @@ import { ComfyWorkflow, getComfyWorkflow } from '@/lib/workflow'
 
 async function prepareWorkflow(imageUrl: string, text: string): Promise<ComfyWorkflow> {
   // Получаем базовый workflow
-  const workflow: ComfyWorkflow = await getComfyWorkflow()
+  const workflowObject: ComfyWorkflow = await getComfyWorkflow();
 
-  // Находим узел загрузки изображения в workflow
-  const loadImageNode = Object.values(workflow).find(node =>
-    node.class_type === 'LoadImage'
-  )
+  // Превращаем workflow в строку
+  let workflowString = JSON.stringify(workflowObject);
 
-  // Заменяем плейсхолдер изображения на реальный URL
-  if (loadImageNode) {
-    loadImageNode.inputs.image = imageUrl
-  }
+  // Заменяем плейсхолдеры
+  workflowString = workflowString.replace(/PROMPT_PLACEHOLDER/g, text);
+  workflowString = workflowString.replace(/IMG_PLACEHOLDER/g, imageUrl);
 
-  // Находим текстовые узлы для вставки текста
-  const textNodes = Object.values(workflow).filter(node =>
-    node.class_type === 'CLIPTextEncode'
-  )
+  // Превращаем строку обратно в объект
+  const updatedWorkflow: ComfyWorkflow = JSON.parse(workflowString);
 
-  // Вставляем текст в каждый текстовый узел
-  if (textNodes.length > 0) {
-    textNodes.forEach(node => {
-      if (node.inputs) {
-        node.inputs.text = text
-      }
-    })
-  }
-
-  return workflow
+  return updatedWorkflow;
 }
 
 export async function POST(request: NextRequest) {
