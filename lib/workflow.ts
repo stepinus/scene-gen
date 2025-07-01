@@ -288,7 +288,7 @@ return `{
     },
     "308": {
       "inputs": {
-        "s3_filename": "",
+        "s3_filename": "IMG_PLACEHOLDER",
         "local_path": [
           "307",
           0
