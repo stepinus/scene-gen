@@ -12,10 +12,7 @@ export type ComfyWorkflow = {
 };
 
 // Моковая функция для получения workflow
-export async function getComfyWorkflow(): Promise<string> {
-  // В реальном приложении здесь будет логика получения workflow
-  // из файла или API
-return `{
+export const workflow =  {
     "3": {
       "inputs": {
         "seed": 411622654063530,
@@ -421,6 +418,4 @@ return `{
       }
     }
   }
-  `
-    // Другие узлы workflow..
-}
+  

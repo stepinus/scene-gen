@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ComfyWorkflow, getComfyWorkflow } from '@/lib/workflow'
+import { ComfyWorkflow, workflow } from '@/lib/workflow'
 
 async function prepareWorkflow(imageUrl: string, text: string): Promise<ComfyWorkflow> {
   // Получаем базовый workflow
-  const workflowObject: ComfyWorkflow = await getComfyWorkflow();
+  const workflowObject = workflow;
 
   // Превращаем workflow в строку
   let workflowString = JSON.stringify(workflowObject);
