@@ -174,7 +174,28 @@ export async function POST(request: Request) {
         return null;
       };
 
-      // Ищем filename в зависимости от режима
+      // Функция для поиска s3_paths в структуре outputs
+      const findS3Path = (obj: any, inOutputs: boolean = false): string | null => {
+        if (obj && typeof obj === 'object') {
+          // Проверяем, находимся ли мы в поле outputs или его потомках
+          const isInOutputs = inOutputs || Object.keys(obj).includes('outputs');
+          
+          // Если мы в outputs и есть s3_paths - возвращаем первый элемент
+          if (isInOutputs && obj.s3_paths && Array.isArray(obj.s3_paths) && obj.s3_paths.length > 0) {
+            return obj.s3_paths[0];
+          }
+          
+          // Рекурсивно проверяем все ключи
+          for (const key in obj) {
+            const isCurrentInOutputs = isInOutputs || key === 'outputs';
+            const result = findS3Path(obj[key], isCurrentInOutputs);
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+
+      // Если указан режим, работаем как раньше для обратной совместимости
       if (mode === 'text2image') {
         const filename = findFilename(data[prompt_id], '.png', false);
         if (filename) {
@@ -186,28 +207,7 @@ export async function POST(request: Request) {
             { status: 500 }
           );
         }
-      } else {
-        // Для video режима ищем s3_paths в структуре outputs
-        const findS3Path = (obj: any, inOutputs: boolean = false): string | null => {
-          if (obj && typeof obj === 'object') {
-            // Проверяем, находимся ли мы в поле outputs или его потомках
-            const isInOutputs = inOutputs || Object.keys(obj).includes('outputs');
-            
-            // Если мы в outputs и есть s3_paths - возвращаем первый элемент
-            if (isInOutputs && obj.s3_paths && Array.isArray(obj.s3_paths) && obj.s3_paths.length > 0) {
-              return obj.s3_paths[0];
-            }
-            
-            // Рекурсивно проверяем все ключи
-            for (const key in obj) {
-              const isCurrentInOutputs = isInOutputs || key === 'outputs';
-              const result = findS3Path(obj[key], isCurrentInOutputs);
-              if (result) return result;
-            }
-          }
-          return null;
-        };
-        
+      } else if (mode === 'video') {
         const s3Path = findS3Path(data[prompt_id], false);
         
         if (s3Path) {
@@ -219,6 +219,24 @@ export async function POST(request: Request) {
             { status: 500 }
           );
         }
+      } else {
+        // Без режима - возвращаем все что найдем
+        const result: any = {};
+        
+        // Ищем изображение
+        const imageFilename = findFilename(data[prompt_id], '.png', false);
+        if (imageFilename) {
+          result.imageFileName = imageFilename;
+        }
+        
+        // Ищем видео
+        const videoS3Path = findS3Path(data[prompt_id], false);
+        if (videoS3Path) {
+          result.videoFileName = videoS3Path;
+        }
+        
+        // Возвращаем результат, даже если он частичный
+        return NextResponse.json(result);
       }
     } catch (fetchError) {
       console.error('Ошибка при запросе к ComfyUI history API:', fetchError);

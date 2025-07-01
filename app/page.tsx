@@ -185,12 +185,19 @@ function HomeComponent() {
       })
 
       if (response.ok) {
-        updateProgress('Обработка ответа...', 95)
         const data = await response.json()
 
-        setResultImage(data.image)
-        setResultVideo(data.video)
-        updateProgress('Готово!', 100)
+        // Если есть ComfyUI настройки и получен prompt_id, запускаем поллинг
+        if (settings?.serverUrl && data.comfyData?.prompt_id) {
+          updateProgress('Задача отправлена в ComfyUI, ожидание результата...', 15)
+          await pollComfyHistory(data.comfyData.prompt_id, settings.serverUrl, updateProgress)
+        } else {
+          // Демонстрационный режим
+          updateProgress('Обработка ответа...', 95)
+          setResultImage(data.image)
+          setResultVideo(data.video)
+          updateProgress('Готово!', 100)
+        }
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Ошибка API')
@@ -201,6 +208,79 @@ function HomeComponent() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Функция поллинга результатов от ComfyUI
+  const pollComfyHistory = async (promptId: string, serverUrl: string, updateProgress: (stage: string, progress: number) => void) => {
+    const maxWaitTime = 20 * 60 * 1000 // 20 минут
+    const pollInterval = 10 * 1000 // 10 секунд
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000)
+        updateProgress(`Генерация в процессе... (${elapsedMinutes} мин)`, 15 + (elapsedMinutes / 20) * 80)
+
+        // Проверяем результаты (и изображения и видео приходят в одном ответе)
+        const response = await fetch('/api/comfy-history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt_id: promptId,
+            serverUrl: serverUrl
+          })
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          
+          // Если есть результаты
+          if (data.fileName || data.videoFileName || data.imageFileName) {
+            
+            // Обрабатываем изображение (итоговое, не референсное)
+            if (data.fileName || data.imageFileName) {
+              const imageFileName = data.fileName || data.imageFileName
+              const imageUrl = `${serverUrl}/view?filename=${imageFileName}&type=output`
+              setResultImage(imageUrl)
+            }
+
+            // Обрабатываем видео
+            if (data.videoFileName) {
+              setResultVideo(data.videoFileName) // s3_path уже содержит полный URL
+            } else if (data.fileName && data.fileName.includes('video')) {
+              // Если видео приходит в fileName
+              setResultVideo(data.fileName)
+            }
+
+            // Проверяем, получили ли мы все результаты
+            const hasImage = data.fileName || data.imageFileName
+            const hasVideo = data.videoFileName || (data.fileName && data.fileName.includes('video'))
+            
+            if (hasImage && hasVideo) {
+              updateProgress('Готово!', 100)
+              return // Успешно завершили - получили и изображение и видео
+            } else if (hasImage) {
+              updateProgress('Изображение готово, ожидание видео...', 70)
+            } else if (hasVideo) {
+              updateProgress('Видео готово, ожидание изображения...', 70)
+            }
+          }
+        }
+
+        // Ждем перед следующей проверкой
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+
+      } catch (error) {
+        console.error('Ошибка при поллинге:', error)
+        // Продолжаем поллинг даже при ошибках
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+      }
+    }
+
+    // Превышено время ожидания
+    throw new Error('Превышено время ожидания результата (20 минут)')
   }
 
   const handleReset = () => {
